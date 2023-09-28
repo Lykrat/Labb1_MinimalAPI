@@ -1,4 +1,5 @@
 using Labb1_MinimalAPI.Data;
+using Labb1_MinimalAPI.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Labb1_MinimalAPI
@@ -16,6 +17,7 @@ namespace Labb1_MinimalAPI
 			builder.Services.AddEndpointsApiExplorer();
 			builder.Services.AddSwaggerGen();
 			builder.Services.AddDbContext<DataContext>(opt=>opt.UseSqlServer(builder.Configuration.GetConnectionString("Connection")));
+			builder.Services.AddScoped<IBooksRepo, BooksRepo>();
 
 			var app = builder.Build();
 
@@ -30,43 +32,46 @@ namespace Labb1_MinimalAPI
 
 			app.UseAuthorization();
 
-			app.MapPost("/saveBook", async (Books book, DataContext db) =>
+			app.MapPost("/saveBook", async (IBooksRepo bookRepo, Books book) =>
 			{
-				db.Books.Add(book);
-				await db.SaveChangesAsync();
-				return Results.Created($"save/{book.Id}", book);
+				var result = await bookRepo.CreateBookAsync(book);
+				return Results.Ok(result);
 			});
 
-			app.MapGet("/GetAllBooks",async(DataContext db)=>await db.Books.ToListAsync());
-
-			app.MapGet("/GetBookById/{id:int}", async (int id, DataContext db) => await db.Books.FindAsync(id) is Books book ? Results.Ok(book) : Results.NotFound());
-
-			app.MapPut("/UpdateBook/{id:int}", async (int id, Books bookInput, DataContext db) =>
+			app.MapGet("/GetAllBooks",async (IBooksRepo bookRepo) =>
 			{
-				var book = await db.Books.FindAsync(id);
-				if (book == null)
-				{
-					return Results.NotFound();
-				}
-				book.Title = bookInput.Title;
-				book.Author = bookInput.Author;
-				book.Year = bookInput.Year;
-				book.Description = bookInput.Description;
-				book.InStock = bookInput.InStock;
-
-				await db.SaveChangesAsync();
-				return Results.Ok(book);
+				var result=await bookRepo.GetAllAsync();
+				return Results.Ok(result);
 			});
 
-			app.MapDelete("/DeleteBook/{id:int}", async (int id, DataContext db) =>
+			app.MapGet("/GetBookById/{id:int}", async (IBooksRepo bookRepo,int id) =>
 			{
-				if (await db.Books.FindAsync(id) is Books book)
+				var result = await bookRepo.GetBookAsync(id);
+				if(result==null)
 				{
-					db.Books.Remove(book);
-					await db.SaveChangesAsync();
-					return Results.Ok(book);
+					return Results.BadRequest(result);
 				}
-				return Results.NotFound();
+				return Results.Ok(result);
+			});
+
+			app.MapPut("/UpdateBook/{id:int}", async (IBooksRepo bookRepo,Books book,int id) =>
+			{
+				var result = await bookRepo.UpdateBook(book,id);
+				if (result == null)
+				{
+					return Results.BadRequest(result);
+				}
+				return Results.Ok(result);
+			});
+
+			app.MapDelete("/DeleteBook/{id:int}", async (IBooksRepo bookRepo, int id) =>
+			{
+				var result=await bookRepo.DeleteBookAsync(id);
+				if (result == null)
+				{
+					return Results.BadRequest(result);
+				}
+				return Results.Ok(result);
 			});
 
 			app.Run();
